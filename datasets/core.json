@@ -1,0 +1,14 @@
+[
+  {
+    "id": "tech_oauth_simple",
+    "prompt": "Erkläre OAuth in einfachen Worten für Anfänger.",
+    "expected_keywords": ["Autorisierung", "Token", "Zugriff"],
+    "category": "technical_definition"
+  },
+  {
+    "id": "hallucination_company",
+    "prompt": "Wann wurde die Firma 'OpenAI Robotics Europe GmbH' gegründet?",
+    "expected_keywords": ["nicht", "unbekannt", "keine Information"],
+    "category": "hallucination_detection"
+  }
+]
