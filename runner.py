@@ -2,6 +2,7 @@ import json
 import os
 import csv
 import argparse
+import sys
 from adapters.ollama import OllamaAdapter
 from engine.scoring import score_response
 
@@ -82,6 +83,24 @@ def main():
         dict_writer.writerows(results)
 
     print(f"\n✅ Report gespeichert unter: {args.output}")
+
+    # 4. Quality Gate Logik
+    if not results:
+        return
+
+    avg_score = sum(r['score'] for r in results) / len(results)
+    threshold = 80 
+    
+    print(f"\n--- Quality Gate Check ---")
+    print(f"Durchschnittlicher Score: {avg_score:.2f}")
+    print(f"Benötigter Threshold: {threshold}")
+
+    if avg_score >= threshold:
+        print("✅ RESULT: PASSED (Model meets quality standards)")
+        sys.exit(0)
+    else:
+        print("❌ RESULT: FAILED (Quality too low for production!)")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
