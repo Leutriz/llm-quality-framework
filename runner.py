@@ -1,6 +1,7 @@
 import json
 import os
 from adapters.ollama import OllamaAdapter
+from engine.scoring import score_response
 
 def load_dataset(file_path):
     """Lädt das JSON-Dataset aus dem angegebenen Pfad."""
@@ -36,23 +37,34 @@ def main():
     print(f"\nStarte Testlauf für {len(dataset)} Fälle...\n")
     
     for item in dataset:
-        prompt_id = item.get("id", "unknown")
         prompt_text = item.get("prompt", "")
+        keywords = item.get("expected_keywords", [])
         
-        print(f"Running [{prompt_id}]...", end=" ", flush=True)
-        
-        # Den Prompt an den Adapter senden
+        print(f"Running [{item.get('id')}]...", end=" ", flush=True)
         response = adapter.send(prompt_text)
         
-        # Ergebnis speichern
-        results.append({
-            "id": prompt_id,
-            "prompt": prompt_text,
-            "response": response,
-            "expected_keywords": item.get("expected_keywords", [])
-        })
+        # Scoring aufrufen
+        evaluation = score_response(response, keywords)
         
-        print("Done.")
+        results.append({
+            "id": item.get("id"),
+            "score": evaluation["final_score"],
+            "matches": evaluation["matched_keywords"],
+            "response": response
+        })
+        print(f"DONE (Score: {evaluation['final_score']}/100)")
+
+        # Feedback-Details anzeigen
+        if evaluation["final_score"] < 100:
+            print(f"   └─ Grund für Abzug:")
+            if len(evaluation["matched_keywords"]) < len(keywords):
+                missing = set(keywords) - set(evaluation["matched_keywords"])
+                print(f"      - Fehlende Keywords: {list(missing)}")
+            if evaluation["length"] < 20:
+                print(f"      - Warnung: Antwort ist extrem kurz ({evaluation['length']} Zeichen)")
+        else:
+            print(f"   └─ Perfekter Match! Alle Keywords gefunden.")
+        print("-" * 30)
 
     # 3. Zusammenfassung (vorläufig)
     print(f"\n--- Testlauf beendet ---")
