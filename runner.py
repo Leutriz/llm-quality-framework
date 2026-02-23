@@ -1,5 +1,7 @@
 import json
 import os
+import csv
+import argparse
 from adapters.ollama import OllamaAdapter
 from engine.scoring import score_response
 
@@ -17,60 +19,69 @@ def load_dataset(file_path):
             return []
 
 def main():
-    dataset_path = 'datasets/core.json'
-    model_name = "llama3" # Später machen wir das über CLI-Parameter
+    # 1. Initialisierung + CLI Setup
+    parser = argparse.ArgumentParser(description="LLM Quality Framework Runner")
+    parser.add_argument("--model", type=str, default="llama3", help="Name des Ollama Modells")
+    parser.add_argument("--dataset", type=str, default="datasets/core.json", help="Pfad zum Dataset")
+    parser.add_argument("--output", type=str, default="reports/report.csv", help="Pfad für den CSV-Export")
     
-    print(f"--- LLM Quality Framework ---")
-    print(f"Modell: {model_name} | Dataset: {dataset_path}")
+    args = parser.parse_args()
+
+    # Verzeichnisse sicherstellen
+    os.makedirs("reports", exist_ok=True)
+
+    print(f"\n--- LLM Quality Framework ---")
+    print(f"Modell: {args.model} | Dataset: {args.dataset}")
     
-    # 1. Initialisierung
-    dataset = load_dataset(dataset_path)
-    adapter = OllamaAdapter(model_name)
+    dataset = load_dataset(args.dataset)
+    adapter = OllamaAdapter(args.model)
     
     results = []
 
     if not dataset:
-        print("Abbruch: Kein Dataset geladen.")
         return
-
-    # 2. Loop über alle Testfälle (Response Collection)
-    print(f"\nStarte Testlauf für {len(dataset)} Fälle...\n")
     
+    # 2. Loop über alle Testfälle (Response Collection)
+    print(f"\nStarte Testlauf...")
     for item in dataset:
+        prompt_id = item.get("id", "unknown")
         prompt_text = item.get("prompt", "")
         keywords = item.get("expected_keywords", [])
         
-        print(f"Running [{item.get('id')}]...", end=" ", flush=True)
+        print(f"[{prompt_id}] Running...", end=" ", flush=True)
         response = adapter.send(prompt_text)
+        eval_result = score_response(response, keywords)
         
-        # Scoring aufrufen
-        evaluation = score_response(response, keywords)
-        
+        # Daten für CSV sammeln
         results.append({
-            "id": item.get("id"),
-            "score": evaluation["final_score"],
-            "matches": evaluation["matched_keywords"],
-            "response": response
+            "id": prompt_id,
+            "score": eval_result["final_score"],
+            "matched_keywords": ", ".join(eval_result["matched_keywords"]),
+            "prompt": prompt_text,
+            "response": response.replace("\n", " ")
         })
-        print(f"DONE (Score: {evaluation['final_score']}/100)")
+        print(f"DONE (Score: {eval_result['final_score']}/100)")
 
         # Feedback-Details anzeigen
-        if evaluation["final_score"] < 100:
+        if eval_result["final_score"] < 100:
             print(f"   └─ Grund für Abzug:")
-            if len(evaluation["matched_keywords"]) < len(keywords):
-                missing = set(keywords) - set(evaluation["matched_keywords"])
+            if len(eval_result["matched_keywords"]) < len(keywords):
+                missing = set(keywords) - set(eval_result["matched_keywords"])
                 print(f"      - Fehlende Keywords: {list(missing)}")
-            if evaluation["length"] < 20:
-                print(f"      - Warnung: Antwort ist extrem kurz ({evaluation['length']} Zeichen)")
+            if eval_result["length"] < 20:
+                print(f"      - Warnung: Antwort ist extrem kurz ({eval_result['length']} Zeichen)")
         else:
             print(f"   └─ Perfekter Match! Alle Keywords gefunden.")
         print("-" * 30)
 
-    # 3. Zusammenfassung (vorläufig)
-    print(f"\n--- Testlauf beendet ---")
-    for res in results:
-        print(f"\nID: {res['id']}")
-        print(f"Antwort: {res['response'][:100]}...") # Zeige nur die ersten 100 Zeichen
+    # 3. CSV Export
+    keys = results[0].keys()
+    with open(args.output, 'w', newline='', encoding='utf-8') as f:
+        dict_writer = csv.DictWriter(f, fieldnames=keys)
+        dict_writer.writeheader()
+        dict_writer.writerows(results)
+
+    print(f"\n✅ Report gespeichert unter: {args.output}")
 
 if __name__ == "__main__":
     main()
